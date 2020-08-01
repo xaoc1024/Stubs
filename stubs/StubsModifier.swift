@@ -8,13 +8,13 @@
 
 import Foundation
 
+enum ModificationError: Error {
+    case incorectStructure(description: String)
+    case incorrectExecutionPath
+}
+
 class StubsModifier {
-    struct Configuration {
-        let structureMatchingKeys: [String]
-        let addDictionary: [String: Any]
-        let removeKeys: [String]
-    }
-    
+
     private enum Constant {
         static let componentsCount = 5
         static let urlComponentIndex = 4
@@ -26,32 +26,57 @@ class StubsModifier {
     let fileManager = FileManager()
 
     let urlMatcher: URLMatcher
-    let configuration: Configuration
+    let modificationRules: [ModificationRule]
 
-    init(urlMatcher: URLMatcher, configuration: Configuration) {
+    init(urlMatcher: URLMatcher, modificationRules: [ModificationRule]) {
         self.urlMatcher = urlMatcher
-        self.configuration = configuration
+        self.modificationRules = modificationRules
     }
 
     func modifyStubsForIndexURLs(_ indexURLs: [URL]) {
-        print("Started modifying stubs")
-        for url in indexURLs {
-            readIndexFile(indexFileUrl: url)
+        print("Finding stubs to modify")
+
+        let stubFilesURLs = indexURLs.compactMap { (indexFileURL) -> [URL] in
+            return self.stubsFileURL(for: indexFileURL)
         }
+        .flatMap { $0 }
+
+        print("Found \(stubFilesURLs.count) stub files to be modified.")
+        print("Start stubs modification")
+
+        var modifiedCounter = 0
+        stubFilesURLs.forEach { (stubsURL) in
+            if let jsonObject = readStubFile(at: stubsURL) {
+                do {
+                    let modified = try modifyStubDictionary(jsonObject)
+                    saveModified(modified, at: stubsURL)
+                    modifiedCounter += 1
+                } catch let error {
+                    print("Did fail to modify stub at \(stubsURL.absoluteString)")
+                    print(error)
+                }
+            }
+        }
+
+        print("\nModification has finished. Modified \(modifiedCounter) file(s)")
     }
 
-    private func readIndexFile(indexFileUrl: URL) {
+    private func stubsFileURL(for indexFileUrl: URL) -> [URL] {
         guard let fileContent = fileManager.contents(atPath: indexFileUrl.path), let indexFile = String(bytes: fileContent, encoding: .utf8) else {
-            return
+            return []
         }
 
         let lines = indexFile.split(separator: "\n")
 
+        var stubsFilesUrls = [URL]()
+
         for line in lines {
             if let stubsURL = responseStubsURLOrNil(for: String(line), indexFileUrl: indexFileUrl) {
-                modifyStubsForURL(at: stubsURL)
+                stubsFilesUrls.append(stubsURL)
             }
         }
+
+        return stubsFilesUrls
     }
 
     private func responseStubsURLOrNil(for line: String, indexFileUrl: URL) -> URL? {
@@ -74,74 +99,108 @@ class StubsModifier {
         return nil
     }
 
-    private func modifyStubsForURL(at url: URL) {
-        guard let fileContent = fileManager.contents(atPath: url.path) else {
-            print("ERROR: cannot read file at url: \(url)")
-            return
-        }
-
-        let object = try? JSONSerialization.jsonObject(with: fileContent, options: [])
-
-        guard let dictionary = object as? [String: Any] else {
-            print("ERROR: incorrect file structure, \(String(describing: String(bytes: fileContent, encoding: .utf8)))")
-            return
-        }
-
-        for expectedKey in configuration.structureMatchingKeys {
-            if dictionary[expectedKey] == nil {
-                print("WARNING: file at url \(url) has different structure")
-                return
-            }
-        }
-
-        var copy = dictionary
-
-        copy.merge(configuration.addDictionary) { (value1, value2) -> Any in
-            return value1
-        }
-
-        for key in configuration.removeKeys {
-            copy[key] = nil
-        }
-
-        if copy.keys != dictionary.keys {
-            do {
-                let data = try JSONSerialization.data(withJSONObject: copy, options: [.prettyPrinted, .sortedKeys])
-                try data.write(to: url)
-                print("Did modify file at \(url)")
-            } catch let error {
-                print(error)
-            }
-        }
-    }
-}
-
-extension StubsModifier {
-    static func readStubsModificationConfig(at executableFolderURL: URL) -> StubsModifier.Configuration {
-        let modifyFileURL = executableFolderURL.appendingPathComponent(Constant.modificationRulesFile, isDirectory: false)
-
+    private func readStubFile(at url: URL) -> [String: Any]? {
         do {
-            let modifyFileData = try Data(contentsOf: modifyFileURL)
-            let object = try JSONSerialization.jsonObject(with: modifyFileData, options: [])
+            let fileContent = try Data(contentsOf: url)
+
+            let object = try? JSONSerialization.jsonObject(with: fileContent, options: [])
 
             guard let dictionary = object as? [String: Any] else {
-                print("Incorrect structure of modify.json file")
-                abort()
+                print("ERROR: incorrect file structure, \(String(describing: String(bytes: fileContent, encoding: .utf8)))")
+                return nil
             }
 
-            let structureMatchingKeys: [String] = dictionary["match"] as? [String] ?? []
-            let addDictionary: [String : Any] = dictionary["add"] as? [String : Any] ?? [:]
-            let removeKeys: [String] = dictionary["remove"] as? [String] ?? []
-
-            if addDictionary.isEmpty && removeKeys.isEmpty {
-                print("Need to have at least one modification rule")
-                abort()
-            } else {
-                return .init(structureMatchingKeys: structureMatchingKeys, addDictionary: addDictionary, removeKeys: removeKeys)
-            }
+            return dictionary
         } catch let error {
             print(error)
-            fatalError()
+        }
+
+        return nil
+    }
+
+
+    private func modifyStubDictionary(_ dictionary: [String: Any]) throws -> [String: Any] {
+        var copy = dictionary
+
+        for rule in modificationRules {
+            copy = try applyRule(rule, object: copy)
+        }
+
+        return copy
+    }
+
+    private func applyRule<T>(_ rule: ModificationRule, object: T) throws -> T {
+        if let currentKey = rule.path.first {
+            if var dict = object as? [String: Any] {
+                if let dictEntry = dict[currentKey] as? [String: Any] {
+                    let modifiedEntry = try applyRule(rule.ruleByRemovingTopPathComponent(), object: dictEntry)
+                    dict[currentKey] = modifiedEntry
+                } else if let arrayEntry = dict[currentKey] as? [[String: Any]] {
+                    let newArray = try arrayEntry.compactMap {
+                        try applyRule(rule.ruleByRemovingTopPathComponent(), object: $0)
+                    }
+                    dict[currentKey] = newArray
+                } else {
+                    throw ModificationError.incorectStructure(description: "Incorrect structure of json entry\n \(dict)\n Missing key \(currentKey)")
+                }
+                return dict as! T
+            } else {
+                // This shouldn't happen
+                throw ModificationError.incorrectExecutionPath
+            }
+        } else {
+            if var dict = object as? [String: Any] {
+                for modification in rule.modification {
+                    switch modification {
+                    case .add(let addDict):
+                        dict.merge(addDict) { (value1, value2) -> Any in
+                            return value2
+                        }
+
+                    case .remove(let keys):
+                        for key in keys {
+                            dict[key] = nil
+                        }
+                    }
+                }
+
+                return dict as! T
+            } else if let array = object as? [[String : Any]] {
+                let newArray = array.compactMap { (dict) -> [String : Any] in
+                    var copy = dict
+
+                    for modification in rule.modification {
+                        switch modification {
+                        case .add(let addDict):
+                            copy.merge(addDict) { (value1, value2) -> Any in
+                                return value2
+                            }
+
+                        case .remove(let keys):
+                            for key in keys {
+                                copy[key] = nil
+                            }
+                        }
+                    }
+
+                    return copy
+                }
+
+                return newArray as! T
+            }
+        }
+
+        // This shouldn't happen
+        throw ModificationError.incorrectExecutionPath
+    }
+
+    private func saveModified(_ modifiedDict: [String: Any], at url: URL) {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: modifiedDict, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url)
+            print("Did modify file at \(url.absoluteString)")
+        } catch let error {
+            print(error)
         }
     }
 }

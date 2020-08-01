@@ -40,11 +40,11 @@ let executableFolderPathURL = URL(fileURLWithPath: CommandLine.arguments[0]).del
 let stubsDirURL = executableFolderPathURL
 
 let matherComponents = URLMatcher.readURLMatchingRulesFile(at: executableFolderPathURL)
-let stubsModificationRulesConfig = StubsModifier.readStubsModificationConfig(at: executableFolderPathURL)
+let modificationRules = RulesParser().readRules(at: executableFolderPathURL)
 let indexModificationRulesConfig = IndexFileModifier.readIndexFileModificationConfig(at: executableFolderPathURL)
 
 let urlMatcher = URLMatcher(urlComponents: matherComponents)
-let stubsModifier = StubsModifier(urlMatcher: urlMatcher, configuration: stubsModificationRulesConfig)
+let stubsModifier = StubsModifier(urlMatcher: urlMatcher, modificationRules: modificationRules)
 
 let indexFileModifier = IndexFileModifier(urlMatcher: urlMatcher, configuration: indexModificationRulesConfig)
 
