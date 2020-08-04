@@ -9,7 +9,7 @@
 import Foundation
 
 class IndexFileModifier {
-    struct Configuration {
+    struct ModificationRules {
         let addDictionary: [String: Any]
         let removeQueryKeys: [String]
     }
@@ -17,29 +17,46 @@ class IndexFileModifier {
     private enum Constant {
         static let componentsCount = 5
         static let urlComponentIndex = 4
-        static let modificationRulesFile = "/stubs_config/index_modification_rules.json"
     }
 
     let fileManager = FileManager()
 
-    let urlMatcher: URLMatcher
-    let configuration: Configuration
+    let indexRecordsMatcher: IndexRecordsFinder
+    let indexFileParser: IndexFileParser
+    let modificationRules: ModificationRules
 
-    init(urlMatcher: URLMatcher, configuration: Configuration) {
-        self.urlMatcher = urlMatcher
-        self.configuration = configuration
-    }
+    init(indexRecordsMatcher: IndexRecordsFinder, indexFileParser: IndexFileParser, modificationRulesObject: [String: Any]) {
+        self.indexRecordsMatcher = indexRecordsMatcher
+        self.indexFileParser = indexFileParser
 
-    func modifyIndexFile(at indexURLs: [URL]) {
-        print("Started modifying index.txt files")
-        for url in indexURLs {
-            readIndexFile(indexFileUrl: url)
+        let addDictionary: [String : Any] = modificationRulesObject["add"] as? [String : Any] ?? [:]
+        let removeQueryKeys: [String] = modificationRulesObject["remove"] as? [String] ?? []
+
+        if addDictionary.isEmpty && removeQueryKeys.isEmpty {
+            printError("Need to have at least one modification rule in object\n\(modificationRulesObject)")
+            abort()
+        } else {
+            self.modificationRules = .init(addDictionary: addDictionary, removeQueryKeys: removeQueryKeys)
         }
     }
 
-    private func readIndexFile(indexFileUrl: URL) {
+    func modifyIndexFile(at indexURLs: [URL]) {
+        printInfo("Started modifying index.txt files")
+        var counter = 0
+        for url in indexURLs {
+            autoreleasepool {
+                if self.readAndModifyIndexFile(indexFileUrl: url) {
+                    counter += 1
+                }
+            }
+        }
+
+        printInfo("Did modify \(counter) files")
+    }
+
+    private func readAndModifyIndexFile(indexFileUrl: URL) -> Bool {
         guard let fileContent = fileManager.contents(atPath: indexFileUrl.path), let indexFile = String(bytes: fileContent, encoding: .utf8) else {
-            return
+            return false
         }
 
         let lines = indexFile.split(separator: "\n")
@@ -60,23 +77,25 @@ class IndexFileModifier {
             let data = newIndexFileString.data(using: .utf8)
             do {
                 try data?.write(to: indexFileUrl)
+                printInfo("Did modify index file at \(indexFileUrl.absoluteString)")
+                return true
             } catch let error {
-                print("Error during savind modified index file")
-                print(error)
+                printError("Error during savind modified index file")
+                printError("\(error)")
+                return false
             }
         }
+
+        return wasModified
     }
 
     private func matchesRule(_ originalLine: String) -> Bool {
-        let nsLine = originalLine as NSString
-        let components = nsLine.components(separatedBy: ",\t")
-
-        guard components.count == Constant.componentsCount, let matchingURL = URL(string: String(components[Constant.urlComponentIndex])) else {
-            print("Incorrect line format: \(originalLine)")
+        guard let record = indexFileParser.parseIndexRecord(from: originalLine) else {
+            printError("Incorrect line format: \(originalLine)")
             return false
         }
 
-        return urlMatcher.matchURL(matchingURL)
+        return indexRecordsMatcher.isRecordMatchingParameters(record: record)
     }
 
     func modifyLine(_ originalLine: String) -> String {
@@ -84,18 +103,18 @@ class IndexFileModifier {
         let components = nsLine.components(separatedBy: ",\t")
 
         guard components.count == Constant.componentsCount, let matchingURL = URL(string: String(components[Constant.urlComponentIndex])) else {
-            print("Incorrect line format: \(originalLine)")
+            printError("ERROR: Incorrect line format: \(originalLine)")
             return originalLine
         }
 
         guard var urlComponents = URLComponents(url: matchingURL, resolvingAgainstBaseURL: false) else {
-            print("Incorrect url format: \(matchingURL)")
+            printError("ERROR: Incorrect url format: \(matchingURL)")
             return originalLine
         }
 
         var queryItems = urlComponents.queryItems ?? []
 
-        for key in configuration.removeQueryKeys {
+        for key in modificationRules.removeQueryKeys {
             if let removeIndex = queryItems.firstIndex(where: { (item) -> Bool in
                 item.name == key
             }) {
@@ -103,7 +122,7 @@ class IndexFileModifier {
             }
         }
 
-        for (key, value) in configuration.addDictionary {
+        for (key, value) in modificationRules.addDictionary {
             // Remove key if it is present before adding it again
             if let removeIndex = queryItems.firstIndex(where: { (item) -> Bool in
                 item.name == key
@@ -116,7 +135,7 @@ class IndexFileModifier {
 
         urlComponents.queryItems = queryItems
         guard let modifiedURL = urlComponents.url else {
-            print("ERROR: Wasn't able to create url from components: \(urlComponents)")
+            printError("ERROR: Wasn't able to create url from components: \(urlComponents)")
             return originalLine
         }
 
@@ -124,34 +143,5 @@ class IndexFileModifier {
         newComponents[Constant.urlComponentIndex] = modifiedURL.absoluteString
 
         return newComponents.joined(separator: ",\t")
-    }
-}
-
-extension IndexFileModifier {
-    static func readIndexFileModificationConfig(at executableFolderURL: URL) -> IndexFileModifier.Configuration {
-        let modifyFileURL = executableFolderURL.appendingPathComponent(Constant.modificationRulesFile, isDirectory: false)
-
-        do {
-            let modifyFileData = try Data(contentsOf: modifyFileURL)
-            let object = try JSONSerialization.jsonObject(with: modifyFileData, options: [])
-
-            guard let dictionary = object as? [String: Any] else {
-                print("Incorrect structure of modify.json file")
-                abort()
-            }
-
-            let addDictionary: [String : Any] = dictionary["add"] as? [String : Any] ?? [:]
-            let removeQueryKeys: [String] = dictionary["remove"] as? [String] ?? []
-
-            if addDictionary.isEmpty && removeQueryKeys.isEmpty {
-                print("Need to have at least one modification rule")
-                abort()
-            } else {
-                return .init(addDictionary: addDictionary, removeQueryKeys: removeQueryKeys)
-            }
-        } catch let error {
-            print(error)
-            fatalError()
-        }
     }
 }

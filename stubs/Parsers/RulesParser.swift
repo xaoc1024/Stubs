@@ -48,7 +48,6 @@ struct ModificationRule {
 
 class RulesParser {
     private enum Constant {
-        static let rulesFile = "/stubs_config/stubs_modification_rules.json"
         static let rulesKey = "rules"
         static let pathKey = "path"
         static let addKey = "add"
@@ -57,28 +56,13 @@ class RulesParser {
 
     private let fileManager = FileManager()
 
-    func readRules(at url: URL) -> [ModificationRule] {
+    func readRules(at rulesObject: [String: Any]) -> [ModificationRule] {
         do {
-            let rulesJson = try openFile(executableFolderURL: url)
-
-            return try parseRulesJson(rulesJson)
+            return try parseRulesJson(rulesObject)
         } catch let error {
-            print(error)
+            printError("\(error)")
             abort()
         }
-    }
-
-    private func openFile(executableFolderURL: URL) throws -> [String: Any] {
-        let rulesFileURL = executableFolderURL.appendingPathComponent(Constant.rulesFile, isDirectory: false)
-
-        let rulesFileData = try Data(contentsOf: rulesFileURL)
-        let object = try JSONSerialization.jsonObject(with: rulesFileData, options: [])
-
-        guard let dictionary = object as? [String: Any] else {
-            throw ParsingError.incorrectStructure(description: "Incorrect structure of: \n \(object)")
-        }
-
-        return dictionary
     }
 
     private func parseRulesJson(_ dic: [String: Any]) throws -> [ModificationRule] {

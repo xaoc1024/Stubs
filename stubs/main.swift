@@ -8,54 +8,35 @@
 
 import Foundation
 
-enum ModificationParameters: String {
-    case index = "-i"
-    case stubs = "-s"
+func printError(_ error: String) {
+    print("\u{001B}[0;31m\(error)")
 }
 
-let commonErrorMessage =
-"""
-    Use -i to modify index file
-    Use -s to modify stubs
-"""
-
-if CommandLine.argc < 2 {
-    print("No parameters specified." + "\n" + commonErrorMessage)
-    abort()
+func printInfo(_ info: String) {
+    print("\u{001B}[0;0m\(info)")
 }
 
-var parameters = Set<ModificationParameters>()
+let arguments = ArgumentsParser().parse(arguments: CommandLine.arguments)
 
-for i in 1..<Int(CommandLine.argc) {
-    if let parameter = ModificationParameters(rawValue: CommandLine.arguments[i]) {
-        parameters.insert(parameter)
-    } else {
-        print("Incorrect parameter \(CommandLine.arguments[i])" + "\n" + commonErrorMessage)
-        abort()
-    }
-}
+let configurationFile = ConfigurationFile(configurationFileURL: arguments.configurationFileURL)
 
-let executableFolderPathURL = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+let indexRecordsFinder = IndexRecordsFinder(indexSearchParametersObject: configurationFile.indexSearchParameters)
+let indexFilesFinder = IndexFilesFinder(stubsDirURL: arguments.stubsFolderURL)
 
-let stubsDirURL = executableFolderPathURL
+let indexFiles = indexFilesFinder.findIndexFileURLs()
+printInfo("Found \(indexFiles.count) index files.")
 
-let matherComponents = URLMatcher.readURLMatchingRulesFile(at: executableFolderPathURL)
-let modificationRules = RulesParser().readRules(at: executableFolderPathURL)
-let indexModificationRulesConfig = IndexFileModifier.readIndexFileModificationConfig(at: executableFolderPathURL)
+let indexFileParser = IndexFileParser()
 
-let urlMatcher = URLMatcher(urlComponents: matherComponents)
-let stubsModifier = StubsModifier(urlMatcher: urlMatcher, modificationRules: modificationRules)
-
-let indexFileModifier = IndexFileModifier(urlMatcher: urlMatcher, configuration: indexModificationRulesConfig)
-
-let indexFileFinder = IndexFilesFinder(stubsDirURL: stubsDirURL)
-let indexFiles = indexFileFinder.findIndexFileURLs()
-
-parameters.forEach { (parameter) in
-    switch parameter {
+if !indexFiles.isEmpty {
+    switch arguments.modificationOption {
     case .index:
+        let indexFileModifier = IndexFileModifier(indexRecordsMatcher: indexRecordsFinder, indexFileParser: indexFileParser, modificationRulesObject: configurationFile.indexModificationRules)
         indexFileModifier.modifyIndexFile(at: indexFiles)
+
     case .stubs:
+        let modificationRules = RulesParser().readRules(at: configurationFile.stubsModificationRules)
+        let stubsModifier = StubsModifier(indexRecordsMatcher: indexRecordsFinder, indexFileParser: indexFileParser, modificationRules: modificationRules)
         stubsModifier.modifyStubsForIndexURLs(indexFiles)
     }
 }

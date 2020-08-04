@@ -20,83 +20,68 @@ class StubsModifier {
         static let urlComponentIndex = 4
         static let stubDirectoryComponentIndex = 2
         static let respBodyFileName = "resp_body.json"
-        static let modificationRulesFile = "/stubs_config/stubs_modification_rules.json"
     }
 
     let fileManager = FileManager()
 
-    let urlMatcher: URLMatcher
+    let indexRecordsMatcher: IndexRecordsFinder
+    let indexFileParser: IndexFileParser
     let modificationRules: [ModificationRule]
 
-    init(urlMatcher: URLMatcher, modificationRules: [ModificationRule]) {
-        self.urlMatcher = urlMatcher
+    init(indexRecordsMatcher: IndexRecordsFinder, indexFileParser: IndexFileParser, modificationRules: [ModificationRule]) {
+        self.indexRecordsMatcher = indexRecordsMatcher
         self.modificationRules = modificationRules
+        self.indexFileParser = indexFileParser
     }
 
     func modifyStubsForIndexURLs(_ indexURLs: [URL]) {
-        print("Finding stubs to modify")
+        printInfo("Finding stubs to modify")
+
 
         let stubFilesURLs = indexURLs.compactMap { (indexFileURL) -> [URL] in
-            return self.stubsFileURL(for: indexFileURL)
+            autoreleasepool {
+                return self.stubsFileURLs(for: indexFileURL)
+            }
         }
         .flatMap { $0 }
 
-        print("Found \(stubFilesURLs.count) stub files to be modified.")
-        print("Start stubs modification")
+        printInfo("Found \(stubFilesURLs.count) stub files to be modified.")
+        printInfo("Start stubs modification")
 
         var modifiedCounter = 0
         stubFilesURLs.forEach { (stubsURL) in
-            if let jsonObject = readStubFile(at: stubsURL) {
-                do {
-                    let modified = try modifyStubDictionary(jsonObject)
-                    saveModified(modified, at: stubsURL)
-                    modifiedCounter += 1
-                } catch let error {
-                    print("Did fail to modify stub at \(stubsURL.absoluteString)")
-                    print(error)
+            autoreleasepool {
+                if let jsonObject = readStubFile(at: stubsURL) {
+                    do {
+                        let modified = try modifyStubDictionary(jsonObject)
+                        saveModified(modified, at: stubsURL)
+                        modifiedCounter += 1
+                    } catch let error {
+                        printError("Did fail to modify stub at \(stubsURL.absoluteString)")
+                        print(error)
+                    }
                 }
             }
         }
 
-        print("\nModification has finished. Modified \(modifiedCounter) file(s)")
+        printInfo("\nModification has finished. Modified \(modifiedCounter) file(s)")
     }
 
-    private func stubsFileURL(for indexFileUrl: URL) -> [URL] {
-        guard let fileContent = fileManager.contents(atPath: indexFileUrl.path), let indexFile = String(bytes: fileContent, encoding: .utf8) else {
-            return []
+    private func stubsFileURLs(for indexFileUrl: URL) -> [URL] {
+        let records = indexFileParser.indexRecords(from: indexFileUrl)
+
+        let indexFileFolderURL = indexFileUrl.deletingLastPathComponent()
+
+        let stubsFilesUrls = records.filter { (record) -> Bool in
+            return indexRecordsMatcher.isRecordMatchingParameters(record: record)
         }
-
-        let lines = indexFile.split(separator: "\n")
-
-        var stubsFilesUrls = [URL]()
-
-        for line in lines {
-            if let stubsURL = responseStubsURLOrNil(for: String(line), indexFileUrl: indexFileUrl) {
-                stubsFilesUrls.append(stubsURL)
-            }
-        }
-
-        return stubsFilesUrls
-    }
-
-    private func responseStubsURLOrNil(for line: String, indexFileUrl: URL) -> URL? {
-        let nsLine = line as NSString
-        let components = nsLine.components(separatedBy: ",\t")
-
-        guard components.count == Constant.componentsCount, let matchingURL = URL(string: String(components[Constant.urlComponentIndex])) else {
-            print("Incorrect line format \(line)")
-            return nil
-        }
-
-        if self.urlMatcher.matchURL(matchingURL) {
-            let currentFolderURL = indexFileUrl.deletingLastPathComponent()
-            var stubsURL = currentFolderURL.appendingPathComponent(String(components[Constant.stubDirectoryComponentIndex]), isDirectory: true)
+        .compactMap { (record) -> URL in
+            var stubsURL = indexFileFolderURL.appendingPathComponent(record.stubsFolder, isDirectory: true)
             stubsURL.appendPathComponent(Constant.respBodyFileName, isDirectory: false)
-
             return stubsURL
         }
 
-        return nil
+        return stubsFilesUrls
     }
 
     private func readStubFile(at url: URL) -> [String: Any]? {
@@ -106,13 +91,13 @@ class StubsModifier {
             let object = try? JSONSerialization.jsonObject(with: fileContent, options: [])
 
             guard let dictionary = object as? [String: Any] else {
-                print("ERROR: incorrect file structure, \(String(describing: String(bytes: fileContent, encoding: .utf8)))")
+                printError("ERROR: incorrect file structure, \(String(describing: String(bytes: fileContent, encoding: .utf8)))")
                 return nil
             }
 
             return dictionary
         } catch let error {
-            print(error)
+            printError("\(error)")
         }
 
         return nil
@@ -141,7 +126,10 @@ class StubsModifier {
                     }
                     dict[currentKey] = newArray
                 } else {
-                    throw ModificationError.incorectStructure(description: "Incorrect structure of json entry\n \(dict)\n Missing key \(currentKey)")
+//                    printInfo("Incorrect structure of json entry\n \(dict)\n Missing key \(currentKey)")
+                    // return not modified entry. Do not interupt this process, as probably the next entry will have appropriate structure.
+                    // Such case is possible for offer response, where `facetValues` array has different structure for different facets.
+                    return dict as! T
                 }
                 return dict as! T
             } else {
@@ -198,9 +186,9 @@ class StubsModifier {
         do {
             let data = try JSONSerialization.data(withJSONObject: modifiedDict, options: [.prettyPrinted, .sortedKeys])
             try data.write(to: url)
-            print("Did modify file at \(url.absoluteString)")
+            printInfo("Did modify file at \(url.absoluteString)")
         } catch let error {
-            print(error)
+            printError("\(error)")
         }
     }
 }

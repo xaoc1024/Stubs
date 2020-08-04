@@ -10,9 +10,12 @@
 		5C32A22D24D01D2E001EEBFD /* IndexFilesModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C32A22C24D01D2E001EEBFD /* IndexFilesModifier.swift */; };
 		5C4A502A24CEF09200EBFD93 /* IndexFilesFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A502924CEF09200EBFD93 /* IndexFilesFinder.swift */; };
 		5C4A502C24CEF14300EBFD93 /* StubsModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A502B24CEF14300EBFD93 /* StubsModifier.swift */; };
-		5C4A502E24CF225B00EBFD93 /* IndexRecordMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A502D24CF225B00EBFD93 /* IndexRecordMatcher.swift */; };
+		5C4A502E24CF225B00EBFD93 /* IndexRecordsFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A502D24CF225B00EBFD93 /* IndexRecordsFinder.swift */; };
+		5C50191A24D864B40024A509 /* ConfigurationFileParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C50191924D864B40024A509 /* ConfigurationFileParser.swift */; };
 		5C84337B24D3637E0014A3A9 /* RulesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C84337A24D3637E0014A3A9 /* RulesParser.swift */; };
 		5C88738524C9BE980059B4C6 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C88738424C9BE980059B4C6 /* main.swift */; };
+		5CC104D224D81D1F004B55EB /* ArgumentsParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC104D124D81D1F004B55EB /* ArgumentsParser.swift */; };
+		5CC104D424D83861004B55EB /* IndexRecordParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC104D324D83861004B55EB /* IndexRecordParser.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -31,10 +34,13 @@
 		5C32A22C24D01D2E001EEBFD /* IndexFilesModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexFilesModifier.swift; sourceTree = "<group>"; };
 		5C4A502924CEF09200EBFD93 /* IndexFilesFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexFilesFinder.swift; sourceTree = "<group>"; };
 		5C4A502B24CEF14300EBFD93 /* StubsModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubsModifier.swift; sourceTree = "<group>"; };
-		5C4A502D24CF225B00EBFD93 /* IndexRecordMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexRecordMatcher.swift; sourceTree = "<group>"; };
+		5C4A502D24CF225B00EBFD93 /* IndexRecordsFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexRecordsFinder.swift; sourceTree = "<group>"; };
+		5C50191924D864B40024A509 /* ConfigurationFileParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationFileParser.swift; sourceTree = "<group>"; };
 		5C84337A24D3637E0014A3A9 /* RulesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesParser.swift; sourceTree = "<group>"; };
 		5C88738124C9BE980059B4C6 /* stubs */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = stubs; sourceTree = BUILT_PRODUCTS_DIR; };
 		5C88738424C9BE980059B4C6 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		5CC104D124D81D1F004B55EB /* ArgumentsParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArgumentsParser.swift; sourceTree = "<group>"; };
+		5CC104D324D83861004B55EB /* IndexRecordParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexRecordParser.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,6 +54,35 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5C50191524D83ACE0024A509 /* Parsers */ = {
+			isa = PBXGroup;
+			children = (
+				5CC104D124D81D1F004B55EB /* ArgumentsParser.swift */,
+				5C50191924D864B40024A509 /* ConfigurationFileParser.swift */,
+				5CC104D324D83861004B55EB /* IndexRecordParser.swift */,
+				5C84337A24D3637E0014A3A9 /* RulesParser.swift */,
+			);
+			path = Parsers;
+			sourceTree = "<group>";
+		};
+		5C50191724D83AF80024A509 /* Modifiers */ = {
+			isa = PBXGroup;
+			children = (
+				5C4A502B24CEF14300EBFD93 /* StubsModifier.swift */,
+				5C32A22C24D01D2E001EEBFD /* IndexFilesModifier.swift */,
+			);
+			path = Modifiers;
+			sourceTree = "<group>";
+		};
+		5C50191824D83B070024A509 /* Finders */ = {
+			isa = PBXGroup;
+			children = (
+				5C4A502924CEF09200EBFD93 /* IndexFilesFinder.swift */,
+				5C4A502D24CF225B00EBFD93 /* IndexRecordsFinder.swift */,
+			);
+			path = Finders;
+			sourceTree = "<group>";
+		};
 		5C88737824C9BE980059B4C6 = {
 			isa = PBXGroup;
 			children = (
@@ -68,11 +103,9 @@
 			isa = PBXGroup;
 			children = (
 				5C88738424C9BE980059B4C6 /* main.swift */,
-				5C4A502B24CEF14300EBFD93 /* StubsModifier.swift */,
-				5C84337A24D3637E0014A3A9 /* RulesParser.swift */,
-				5C4A502924CEF09200EBFD93 /* IndexFilesFinder.swift */,
-				5C32A22C24D01D2E001EEBFD /* IndexFilesModifier.swift */,
-				5C4A502D24CF225B00EBFD93 /* IndexRecordMatcher.swift */,
+				5C50191524D83ACE0024A509 /* Parsers */,
+				5C50191724D83AF80024A509 /* Modifiers */,
+				5C50191824D83B070024A509 /* Finders */,
 			);
 			path = stubs;
 			sourceTree = "<group>";
@@ -135,11 +168,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5C50191A24D864B40024A509 /* ConfigurationFileParser.swift in Sources */,
 				5C88738524C9BE980059B4C6 /* main.swift in Sources */,
-				5C4A502E24CF225B00EBFD93 /* IndexRecordMatcher.swift in Sources */,
+				5C4A502E24CF225B00EBFD93 /* IndexRecordsFinder.swift in Sources */,
 				5C84337B24D3637E0014A3A9 /* RulesParser.swift in Sources */,
+				5CC104D224D81D1F004B55EB /* ArgumentsParser.swift in Sources */,
 				5C32A22D24D01D2E001EEBFD /* IndexFilesModifier.swift in Sources */,
 				5C4A502C24CEF14300EBFD93 /* StubsModifier.swift in Sources */,
+				5CC104D424D83861004B55EB /* IndexRecordParser.swift in Sources */,
 				5C4A502A24CEF09200EBFD93 /* IndexFilesFinder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

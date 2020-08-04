@@ -34,7 +34,7 @@ class IndexFilesFinder {
         }
 
         guard let contents = try? fileManager.contentsOfDirectory(at: dirUrl, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else {
-            print("ERROR: cannot open file at path \(dirUrl.path)")
+            printError("ERROR: cannot open file at path \(dirUrl.path)")
             return
         }
 
