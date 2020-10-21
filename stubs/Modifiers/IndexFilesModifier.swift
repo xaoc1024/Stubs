@@ -33,8 +33,7 @@ class IndexFileModifier {
         let removeQueryKeys: [String] = modificationRulesObject["remove"] as? [String] ?? []
 
         if addDictionary.isEmpty && removeQueryKeys.isEmpty {
-            printError("Need to have at least one modification rule in object\n\(modificationRulesObject)")
-            abort()
+            fatalError("Need to have at least one modification rule in object\n\(modificationRulesObject)")
         } else {
             self.modificationRules = .init(addDictionary: addDictionary, removeQueryKeys: removeQueryKeys)
         }

@@ -54,7 +54,7 @@ class StubsModifier {
                 if let jsonObject = readStubFile(at: stubsURL) {
                     do {
                         let modified = try modifyStubDictionary(jsonObject)
-                        saveModified(modified, at: stubsURL)
+                        saveModifiedStubDictionary(modified, at: stubsURL)
                         modifiedCounter += 1
                     } catch let error {
                         printError("Did fail to modify stub at \(stubsURL.absoluteString)")
@@ -91,7 +91,7 @@ class StubsModifier {
             let object = try? JSONSerialization.jsonObject(with: fileContent, options: [])
 
             guard let dictionary = object as? [String: Any] else {
-                printError("ERROR: incorrect file structure, \(String(describing: String(bytes: fileContent, encoding: .utf8)))")
+                printError("Incorrect file structure, \(String(describing: String(bytes: fileContent, encoding: .utf8)))")
                 return nil
             }
 
@@ -115,80 +115,103 @@ class StubsModifier {
     }
 
     private func applyRule<T>(_ rule: ModificationRule, object: T) throws -> T {
+        // Traverse and apply rules recursively until the subject key to modify has been discovered.
         if let currentKey = rule.path.first {
-            if var dict = object as? [String: Any] {
-                if let dictEntry = dict[currentKey] as? [String: Any] {
-                    let modifiedEntry = try applyRule(rule.ruleByRemovingTopPathComponent(), object: dictEntry)
-                    dict[currentKey] = modifiedEntry
-                } else if let arrayEntry = dict[currentKey] as? [[String: Any]] {
-                    let newArray = try arrayEntry.compactMap {
-                        try applyRule(rule.ruleByRemovingTopPathComponent(), object: $0)
-                    }
-                    dict[currentKey] = newArray
-                } else {
-//                    printInfo("Incorrect structure of json entry\n \(dict)\n Missing key \(currentKey)")
-                    // return not modified entry. Do not interupt this process, as probably the next entry will have appropriate structure.
-                    // Such case is possible for offer response, where `facetValues` array has different structure for different facets.
-                    return dict as! T
-                }
-                return dict as! T
-            } else {
-                // This shouldn't happen
+            guard var dict = object as? [String: Any] else {
                 throw ModificationError.incorrectExecutionPath
             }
-        } else {
-            if var dict = object as? [String: Any] {
+
+            if let dictEntry = dict[currentKey] as? [String: Any] {
+                let modifiedEntry = try applyRule(rule.ruleByRemovingTopPathComponent(), object: dictEntry)
+                dict[currentKey] = modifiedEntry
+            } else if let arrayEntry = dict[currentKey] as? [[String: Any]] {
+                let newArray = try arrayEntry.compactMap {
+                    try applyRule(rule.ruleByRemovingTopPathComponent(), object: $0)
+                }
+                dict[currentKey] = newArray
+            } else {
+                // Return the entry unmodified. Do not interrupt this process as the next entry may have an appropriate structure.
+                // This is possible for `Offer` responses, where the `facetValues` array has a different structure for different facets.
+            }
+
+            return dict as! T
+        }
+
+        // Replace the data structure
+        if var dict = object as? [String: Any] {
+            for modification in rule.modification {
+                switch modification {
+                case .add(let addDict):
+                    dict.merge(addDict) { (value1, value2) -> Any in
+                        return value2
+                    }
+
+                case .remove(let keys):
+                    for key in keys {
+                        dict[key] = nil
+                    }
+
+                case .transform(let script):
+                    if let object = try? executeScript(script, json: dict) as? [String: Any] {
+                        dict = object
+                    }
+                    else {
+                        printError("Failed to transform dictionary for rule: \(rule.printablePath)")
+                    }
+                }
+            }
+
+            return dict as! T
+        } else if let array = object as? [[String: Any]] {
+            let newArray = array.compactMap { (dict) -> [String: Any] in
+                var copy = dict
+
                 for modification in rule.modification {
                     switch modification {
                     case .add(let addDict):
-                        dict.merge(addDict) { (value1, value2) -> Any in
+                        copy.merge(addDict) { (value1, value2) -> Any in
                             return value2
                         }
 
                     case .remove(let keys):
                         for key in keys {
-                            dict[key] = nil
+                            copy[key] = nil
+                        }
+
+                    case .transform(let script):
+                        if let object = try? executeScript(script, json: dict) as? [String: Any] {
+                            return object
+                        }
+                        else {
+                            printError("Failed to transform dictionary for rule: \(rule.printablePath)")
                         }
                     }
                 }
 
-                return dict as! T
-            } else if let array = object as? [[String : Any]] {
-                let newArray = array.compactMap { (dict) -> [String : Any] in
-                    var copy = dict
-
-                    for modification in rule.modification {
-                        switch modification {
-                        case .add(let addDict):
-                            copy.merge(addDict) { (value1, value2) -> Any in
-                                return value2
-                            }
-
-                        case .remove(let keys):
-                            for key in keys {
-                                copy[key] = nil
-                            }
-                        }
-                    }
-
-                    return copy
-                }
-
-                return newArray as! T
+                return copy
             }
+
+            return newArray as! T
         }
 
-        // This shouldn't happen
         throw ModificationError.incorrectExecutionPath
     }
 
-    private func saveModified(_ modifiedDict: [String: Any], at url: URL) {
+    private func executeScript(_ script: String, json: [String: Any]) throws -> Any {
+        let jsonData = try JSONSerialization.data(withJSONObject: json, options: [])
+        let jsonB64 = jsonData.base64EncodedString()
+        let newJson = Process.launch(command: script, arguments: [jsonB64])
+        let newJsonObject = try JSONSerialization.jsonObject(with: newJson.data(using: .utf8)!, options: [])
+        return newJsonObject
+    }
+
+    private func saveModifiedStubDictionary(_ modifiedDict: [String: Any], at url: URL) {
         do {
             let data = try JSONSerialization.data(withJSONObject: modifiedDict, options: [.prettyPrinted, .sortedKeys])
             try data.write(to: url)
-            printInfo("Did modify file at \(url.absoluteString)")
+            printInfo("Modified file at \(url.absoluteString)")
         } catch let error {
-            printError("\(error)")
+            printError("Failed to modify file \(url.absoluteString) with error: \(error)")
         }
     }
 }
