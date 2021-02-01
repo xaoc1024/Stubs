@@ -53,7 +53,7 @@ class StubsModifier {
             autoreleasepool {
                 if let jsonObject = readStubFile(at: stubsURL) {
                     do {
-                        let modified = try modifyStub(jsonObject)
+                        let modified = try modifyStubDictionary(jsonObject)
                         saveModified(modified, at: stubsURL)
                         modifiedCounter += 1
                     } catch let error {
@@ -104,7 +104,7 @@ class StubsModifier {
     }
 
 
-    private func modifyStub(_ dictionary: [String: Any]) throws -> [String: Any] {
+    private func modifyStubDictionary(_ dictionary: [String: Any]) throws -> [String: Any] {
         var copy = dictionary
 
         for rule in modificationRules {
@@ -126,8 +126,9 @@ class StubsModifier {
                     }
                     dict[currentKey] = newArray
                 } else {
+//                    printInfo("Incorrect structure of json entry\n \(dict)\n Missing key \(currentKey)")
                     // return not modified entry. Do not interupt this process, as probably the next entry will have appropriate structure.
-                    // This case is possible for offer response, where `facetValues` array has different structure for different facets.
+                    // Such case is possible for offer response, where `facetValues` array has different structure for different facets.
                     return dict as! T
                 }
                 return dict as! T
@@ -136,40 +137,49 @@ class StubsModifier {
                 throw ModificationError.incorrectExecutionPath
             }
         } else {
-            if let dict = object as? [String: Any] {
-                return modifyDictionary(dict, using: rule.modification) as! T
+            if var dict = object as? [String: Any] {
+                for modification in rule.modification {
+                    switch modification {
+                    case .add(let addDict):
+                        dict.merge(addDict) { (value1, value2) -> Any in
+                            return value2
+                        }
+
+                    case .remove(let keys):
+                        for key in keys {
+                            dict[key] = nil
+                        }
+                    }
+                }
+
+                return dict as! T
             } else if let array = object as? [[String : Any]] {
-                return modifyArray(array, using: rule.modification) as! T
+                let newArray = array.compactMap { (dict) -> [String : Any] in
+                    var copy = dict
+
+                    for modification in rule.modification {
+                        switch modification {
+                        case .add(let addDict):
+                            copy.merge(addDict) { (value1, value2) -> Any in
+                                return value2
+                            }
+
+                        case .remove(let keys):
+                            for key in keys {
+                                copy[key] = nil
+                            }
+                        }
+                    }
+
+                    return copy
+                }
+
+                return newArray as! T
             }
         }
 
         // This shouldn't happen
         throw ModificationError.incorrectExecutionPath
-    }
-
-    private func modifyDictionary(_ dict: [String: Any], using modifications: [Modification]) -> [String: Any] {
-        var copy = dict
-        for modification in modifications {
-            switch modification {
-            case .add(let addDict):
-                copy.merge(addDict) { (value1, value2) -> Any in
-                    return value2
-                }
-
-            case .remove(let keys):
-                for key in keys {
-                    copy[key] = nil
-                }
-            }
-        }
-
-        return copy
-    }
-
-    private func modifyArray(_ array: [[String: Any]], using modifications: [Modification]) -> [[String: Any]] {
-        return array.compactMap { (dict) -> [String : Any] in
-            return modifyDictionary(dict, using: modifications)
-        }
     }
 
     private func saveModified(_ modifiedDict: [String: Any], at url: URL) {
