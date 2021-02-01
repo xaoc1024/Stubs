@@ -31,11 +31,17 @@ let indexFileParser = IndexFileParser()
 if !indexFiles.isEmpty {
     switch arguments.modificationOption {
     case .index:
-        let indexFileModifier = IndexFileModifier(indexRecordsMatcher: indexRecordsFinder, indexFileParser: indexFileParser, modificationRulesObject: configurationFile.indexModificationRules)
+        guard let rules = configurationFile.indexModificationRules else {
+            fatalError("The `index` operation was executed but no index rules were found in the configuration.")
+        }
+        let indexFileModifier = IndexFileModifier(indexRecordsMatcher: indexRecordsFinder, indexFileParser: indexFileParser, modificationRulesObject: rules)
         indexFileModifier.modifyIndexFile(at: indexFiles)
 
     case .stubs:
-        let modificationRules = RulesParser().readRules(at: configurationFile.stubsModificationRules)
+        guard let rules = configurationFile.stubsModificationRules else {
+            fatalError("The `stubs` operation was executed but no stub rules were found in the configuration.")
+        }
+        let modificationRules = RulesParser().readRules(at: rules)
         let stubsModifier = StubsModifier(indexRecordsMatcher: indexRecordsFinder, indexFileParser: indexFileParser, modificationRules: modificationRules)
         stubsModifier.modifyStubsForIndexURLs(indexFiles)
     }

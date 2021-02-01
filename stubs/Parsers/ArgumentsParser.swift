@@ -54,9 +54,11 @@ class ArgumentsParser {
             abort()
         }
 
-        guard let configurationFileURL = actualFilePath(for: configurationFileArgument, using: executableFolderPathURL, isDirectory: false),
-            let stubsFolderURL = actualFilePath(for: stubsFolderArgument, using: executableFolderPathURL, isDirectory: true) else {
-            abort()
+        guard let configurationFileURL = actualFilePath(for: configurationFileArgument, using: executableFolderPathURL, isDirectory: false) else {
+            fatalError("Could not find configuration file at \(executableFolderPathURL)\(configurationFileArgument)")
+        }
+        guard let stubsFolderURL = actualFilePath(for: stubsFolderArgument, using: executableFolderPathURL, isDirectory: true) else {
+            fatalError("Stubs could not be found at \(executableFolderPathURL)\(stubsFolderArgument)")
         }
 
         return Arguments(modificationOption: modificationOption,
@@ -65,6 +67,17 @@ class ArgumentsParser {
     }
 
     private func actualFilePath(for pathArgument: String, using executableFolderPathURL: URL, isDirectory: Bool) -> URL? {
+        // Absolute path
+        if pathArgument.prefix(1) == "/" {
+            if fileManager.fileExists(atPath: pathArgument) {
+                return URL(fileURLWithPath: pathArgument, isDirectory: isDirectory)
+            }
+            else {
+                return nil
+            }
+        }
+
+        // Relative path
         let relativePath = executableFolderPathURL.appendingPathComponent(pathArgument).absoluteString
         if fileManager.fileExists(atPath: relativePath) {
             return URL(fileURLWithPath: relativePath, isDirectory: isDirectory)

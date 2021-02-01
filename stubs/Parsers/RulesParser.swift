@@ -31,18 +31,31 @@ enum JsonPathComponent {
 }
 
 enum Modification {
-    case add(dic: [String : Any])
+    case add(dic: [String: Any])
     case remove(keys: [String])
+    case transform(script: String)
 }
 
 struct ModificationRule {
     let path: [String]
     let modification: [Modification]
 
+    private let originalPath: [String]
+
+    var printablePath: String {
+        return originalPath.joined(separator: "/")
+    }
+
+    init(path: [String], modification: [Modification], originalPath: [String]? = nil) {
+        self.path = path
+        self.modification = modification
+        self.originalPath = originalPath ?? path
+    }
+
     func ruleByRemovingTopPathComponent() -> ModificationRule {
         var newPath = path
         newPath.removeFirst()
-        return ModificationRule(path: newPath, modification: modification)
+        return ModificationRule(path: newPath, modification: modification, originalPath: originalPath)
     }
 }
 
@@ -52,6 +65,7 @@ class RulesParser {
         static let pathKey = "path"
         static let addKey = "add"
         static let removeKey = "remove"
+        static let transform = "transform"
     }
 
     private let fileManager = FileManager()
@@ -60,8 +74,7 @@ class RulesParser {
         do {
             return try parseRulesJson(rulesObject)
         } catch let error {
-            printError("\(error)")
-            abort()
+            fatalError("\(error)")
         }
     }
 
@@ -84,6 +97,10 @@ class RulesParser {
 
                 if let removeKeysArray = entry[Constant.removeKey] as? [String] {
                     modifications.append(.remove(keys: removeKeysArray))
+                }
+
+                if let transformScript = entry[Constant.transform] as? String {
+                    modifications.append(.transform(script: transformScript))
                 }
 
                 if modifications.isEmpty {
