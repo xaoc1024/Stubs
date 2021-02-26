@@ -12,6 +12,7 @@ class IndexFileModifier {
     struct ModificationRules {
         let addDictionary: [String: Any]
         let removeQueryKeys: [String]
+        let shouldRemoveLine: Bool
     }
 
     private enum Constant {
@@ -31,11 +32,12 @@ class IndexFileModifier {
 
         let addDictionary: [String : Any] = modificationRulesObject["add"] as? [String : Any] ?? [:]
         let removeQueryKeys: [String] = modificationRulesObject["remove"] as? [String] ?? []
+        let shouldRemoveLine: Bool? = modificationRulesObject["shouldRemoveLine"] as? Bool
 
-        if addDictionary.isEmpty && removeQueryKeys.isEmpty {
+        if addDictionary.isEmpty && removeQueryKeys.isEmpty && (shouldRemoveLine != true) {
             fatalError("Need to have at least one modification rule in object\n\(modificationRulesObject)")
         } else {
-            self.modificationRules = .init(addDictionary: addDictionary, removeQueryKeys: removeQueryKeys)
+            self.modificationRules = .init(addDictionary: addDictionary, removeQueryKeys: removeQueryKeys, shouldRemoveLine: shouldRemoveLine ?? false)
         }
     }
 
@@ -63,7 +65,13 @@ class IndexFileModifier {
         let modifiedLines: [String] = lines.compactMap {
             if self.matchesRule(String($0)) {
                 wasModified = true
-                return self.modifyLine(String($0))
+                if self.modificationRules.shouldRemoveLine {
+                    self.removeDataForLine(String($0), indexFileUrl: indexFileUrl)
+                    return nil
+                }
+                else {
+                    return self.modifyLine(String($0))
+                }
             }
 
             return String($0)
@@ -97,11 +105,28 @@ class IndexFileModifier {
         return indexRecordsMatcher.isRecordMatchingParameters(record: record)
     }
 
+    func removeDataForLine(_ originalLine: String, indexFileUrl: URL) {
+        guard let record = indexFileParser.parseIndexRecord(from: originalLine) else {
+            printError("Incorrect line format: \(originalLine)")
+            return
+        }
+
+        let indexFileFolderURL = indexFileUrl.deletingLastPathComponent()
+        let stubsFolderURL = indexFileFolderURL.appendingPathComponent(record.stubsFolder, isDirectory: true)
+        do {
+            try fileManager.removeItem(at: stubsFolderURL)
+            printInfo("Removed data at path: \(stubsFolderURL)")
+        } catch let error {
+            printError("Wasn't able to remove folder at URL: \(stubsFolderURL.absoluteString)\nGot an error: \(error)")
+        }
+
+    }
+
     func modifyLine(_ originalLine: String) -> String {
         let nsLine = originalLine as NSString
-        let components = nsLine.components(separatedBy: ",\t")
+        let lineComponents = nsLine.components(separatedBy: ",\t")
 
-        guard components.count == Constant.componentsCount, let matchingURL = URL(string: String(components[Constant.urlComponentIndex])) else {
+        guard lineComponents.count == Constant.componentsCount, let matchingURL = URL(string: String(lineComponents[Constant.urlComponentIndex])) else {
             printError("ERROR: Incorrect line format: \(originalLine)")
             return originalLine
         }
@@ -138,7 +163,7 @@ class IndexFileModifier {
             return originalLine
         }
 
-        var newComponents = components.compactMap { String($0) }
+        var newComponents = lineComponents.compactMap { String($0) }
         newComponents[Constant.urlComponentIndex] = modifiedURL.absoluteString
 
         return newComponents.joined(separator: ",\t")
